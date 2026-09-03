@@ -1,0 +1,18 @@
+{
+  "title": "沪教版（五四制）英语 五年级上册 · 2026 点读",
+  "edition": "沪教版（五四制）2026秋 · 五年级上册",
+  "readerVersion": "1.0.0",
+  "units": [
+    {"id":"starter","title":"Starter","pageRange":[8,14],"file":"units/00-starter.json"},
+    {"id":"unit-1","title":"Unit 1 · Clubs in our school","pageRange":[15,22],"file":"units/01-unit-1.json"},
+    {"id":"unit-2","title":"Unit 2 · Traditional games","pageRange":[23,30],"file":"units/02-unit-2.json"},
+    {"id":"unit-3","title":"Unit 3 · Amazing plants","pageRange":[31,38],"file":"units/03-unit-3.json"},
+    {"id":"unit-4","title":"Unit 4 · Together with animals","pageRange":[39,46],"file":"units/04-unit-4.json"},
+    {"id":"unit-5","title":"Unit 5 · Seeing a doctor","pageRange":[47,54],"file":"units/05-unit-5.json"},
+    {"id":"unit-6","title":"Unit 6 · Rise to the challenge","pageRange":[55,62],"file":"units/06-unit-6.json"},
+    {"id":"unit-7","title":"Unit 7 · Great scientists","pageRange":[63,70],"file":"units/07-unit-7.json"},
+    {"id":"unit-8","title":"Unit 8 · Useful inventions","pageRange":[71,78],"file":"units/08-unit-8.json"},
+    {"id":"unit-9","title":"Unit 9 · Using computers","pageRange":[79,86],"file":"units/09-unit-9.json"},
+    {"id":"unit-10","title":"Unit 10 · A greener life","pageRange":[87,94],"file":"units/10-unit-10.json"}
+  ]
+}
