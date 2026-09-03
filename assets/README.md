@@ -1,0 +1,1 @@
+Audio assets directory. The online reader expects `audio-sprite.ogg` here. This file is generated from the 74 publisher-provided MP3 tracks supplied by the repository owner; `data/audio-sprite-manifest.json` provides the track time map.
