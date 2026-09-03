@@ -1,6 +1,6 @@
 let CATALOG=null,UNITS=[],MANIFEST=null,TIMINGS=null,currentUnit=0,stopAt=null,playStart=null,activeLine=null,ORIGINAL=false;
 const $=s=>document.querySelector(s); const audio=$('#audio');
-const htmlEsc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[c]));
+const htmlEsc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 async function init(){
   [CATALOG,MANIFEST,TIMINGS]=await Promise.all([
     fetch('data/index.json').then(r=>r.json()),
@@ -49,7 +49,8 @@ function preciseSegments(s){
   if(s.segments?.length)return s.segments;
   const t=TIMINGS?.tracks?.[s.track]?.times;if(!t?.length)return null;
   const textParts=splitSentences(s.text).filter(x=>/[.!?。！？]/.test(x));
-  return t.map((a,i)=>({text:textParts[i]||`第 ${i+1} 句`,start:a[0],end:a[1]}));
+  const n=Math.min(t.length,textParts.length);
+  return t.slice(0,n).map((a,i)=>({text:textParts[i],start:a[0],end:a[1]}));
 }
 function sectionCard(s){
   const wrap=document.createElement('article');wrap.className='section';
