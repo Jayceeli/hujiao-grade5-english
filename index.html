@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f5f7f6">
-<title>沪教版五年级上册英语点读 · 2026</title>
+<title>沪教版五年级上册英语原版音频点读 · 2026</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="app">
   <aside class="side">
     <div class="brand">五年级上册英语点读<small>沪教版 · 五四制 · 2026新版</small></div>
-    <div class="mode-note"><b>点句子</b>：逐句英语点读<br><b>连续朗读</b>：朗读整段教材文字<br><b>Starter · At school</b>：保留了原版音频精确时间轴数据；仓库加入音频 sprite 后会自动切换为原版逐句播放</div>
+    <div class="mode-note"><b>仅使用出版社配套原版录音</b><br>Unit 1–10 的 Talking time 与 Story/Reading time 已加入逐句原版点读；其他有配套音轨的栏目可播放整段原版音频。没有出版社独立音轨的 Project 仅显示教材文字，不使用系统 TTS 或合成语音。</div>
     <input id="search" class="search" placeholder="搜索课文、单词、句型…">
     <nav id="nav" class="nav"></nav>
   </aside>
@@ -21,16 +21,16 @@
       <button id="stopAll" class="ghost-btn">■ 停止</button>
     </header>
     <div class="player">
-      <div class="player-title"><span>🔊 点读播放器</span><span id="audioStatus" class="status">正在初始化…</span></div>
+      <div class="player-title"><span>🎧 出版社原版音频播放器</span><span id="audioStatus" class="status">正在初始化…</span></div>
       <audio id="audio" controls preload="metadata" hidden></audio>
       <div class="controls">
-        <span id="now">点击任意句子开始点读</span>
-        <label>原版音频速度 <select id="speed"><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option></select></label>
-        <label class="pill"><input id="loop" type="checkbox"> 原版循环</label>
+        <span id="now">点击带 ▶ 的句子播放原版录音</span>
+        <label>播放速度 <select id="speed"><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option></select></label>
+        <label class="pill"><input id="loop" type="checkbox"> 逐句循环</label>
       </div>
     </div>
     <div id="content"></div>
-    <footer class="footer">教材文字来自用户提供的《义务教育教科书（五·四学制）·英语 五年级上册》。当前在线页可完整逐句点读；项目同时保留出版社配套音轨映射，加入 <code>assets/audio-sprite.ogg</code> 后可自动启用原版音频。</footer>
+    <footer class="footer">教材文字来自用户提供的《义务教育教科书（五·四学制）·英语 五年级上册》，音频来自用户提供的出版社教材配套 MP3。本页面不调用浏览器 TTS，不生成或替代出版社录音。</footer>
   </main>
 </div>
 <script src="app.js"></script>
