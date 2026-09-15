@@ -3,7 +3,7 @@ let stopAt=null,playStart=null,activeLine=null,ORIGINAL=false,monitorId=null,bou
 let pointItems=[],activePointIndex=-1;
 let sequenceItems=[],sequencePos=-1,sequenceMode=false;
 const $=s=>document.querySelector(s); const audio=$('#audio');
-const htmlEsc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+const htmlEsc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[c]));
 
 async function init(){
   try{
@@ -14,12 +14,12 @@ async function init(){
     ]);
     CATALOG=catalog; MANIFEST=manifest;
     const pointFiles=await Promise.all(pointIndex.files.map(f=>fetch('data/'+f,{cache:'no-store'}).then(r=>r.json())));
-    POINTMAP={version:3,tracks:Object.assign({},...pointFiles.map(x=>x.tracks||{}))};
+    POINTMAP={version:pointIndex.version||3,tracks:Object.assign({},...pointFiles.map(x=>x.tracks||{}))};
     UNITS=await Promise.all(CATALOG.units.map(x=>fetch('data/'+x.file,{cache:'no-store'}).then(r=>r.json())));
     await probeOriginalAudio();
     renderNav(); renderUnit(0);
     const n=Object.values(POINTMAP?.tracks||{}).reduce((sum,t)=>sum+(t.segments?.length||0),0)+22;
-    if(ORIGINAL)$('#audioStatus').textContent=`出版社原版音频已就绪 · v3 精校 · ${n} 个点读段`;
+    if(ORIGINAL)$('#audioStatus').textContent=`出版社原版音频已就绪 · 精校点读 · ${n} 个原音段`;
   }catch(e){
     console.error(e); $('#audioStatus').textContent='教材数据加载失败，请刷新页面';
   }
@@ -131,9 +131,10 @@ function splitSentences(text){
   return out;
 }
 
+function pointRow(s){return POINTMAP?.tracks?.[s.track]||null;}
 function pointSegments(s){
   if(s.segments?.length)return s.segments;
-  const row=POINTMAP?.tracks?.[s.track];
+  const row=pointRow(s);
   if(row?.segments?.length)return row.segments;
   return null;
 }
@@ -161,7 +162,8 @@ function renderUnit(i){
 
 function sectionCard(s){
   const wrap=document.createElement('article');wrap.className='section';
-  const segs=pointSegments(s); const isV3=!!POINTMAP?.tracks?.[s.track]?.segments; const sectionPoints=[];
+  const row=pointRow(s); const segs=pointSegments(s); const isV3=!!row?.segments; const sectionPoints=[];
+  const displayOnly=row?.displayOnly||[];
   const h=document.createElement('div');h.className='section-head';h.innerHTML=`<div><h2>${htmlEsc(s.title)}</h2><div class="sub">教材页 ${s.pages.join(', ')}</div></div>`;
   const acts=document.createElement('div');acts.className='section-actions';
   if(s.track){
@@ -176,7 +178,7 @@ function sectionCard(s){
 
   if(segs?.length){
     const badge=document.createElement('p');badge.className='note';
-    badge.textContent=isV3?'v3 精校点读：按教材自然语义块切分，点击只播放该段出版社原版录音；顶部按钮可连续播放精校正文。':'人工精校点读：点击只播放该句出版社原版录音；顶部按钮可连续播放精校正文。';
+    badge.textContent=isV3?'精校点读：点击带 ▶ 的句子只播放对应出版社原版录音；顶部按钮可连续播放已精校正文。':'人工精校点读：点击只播放该句出版社原版录音；顶部按钮可连续播放精校正文。';
     body.appendChild(badge);
     segs.forEach((g,idx)=>{
       const d=document.createElement('div');d.className='sentence precise';d.tabIndex=0;d.setAttribute('role','button');
@@ -188,17 +190,21 @@ function sectionCard(s){
       if(ORIGINAL){d.onclick=play;d.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();play();}}}else d.style.cursor='default';
       body.appendChild(d);
     });
+    if(displayOnly.length){
+      const n=document.createElement('p');n.className='note';n.textContent=row?.displayOnlyNote||'以下教材文字暂未绑定原版逐句音频。';body.appendChild(n);
+      displayOnly.forEach(t=>body.appendChild(staticLine(t,true)));
+    }
   }else if(s.text){splitSentences(s.text).forEach(p=>body.appendChild(staticLine(p)));}
   else body.innerHTML='<div class="empty">暂无可提取文字</div>';
   wrap.appendChild(body);return wrap;
 }
-function staticLine(text){const d=document.createElement('div');d.className='sentence static-line';d.innerHTML=`<span class="speak"></span><span>${htmlEsc(text)}</span>`;return d;}
+function staticLine(text,unmapped=false){const d=document.createElement('div');d.className='sentence static-line'+(unmapped?' unmapped-line':'');d.innerHTML=`<span class="speak">${unmapped?'—':''}</span><span>${htmlEsc(text)}</span>`;return d;}
 
 $('#search').addEventListener('input',e=>{
   stopAll();pointItems=[];activePointIndex=-1;resetSequence();updatePointNav();
   const q=e.target.value.trim().toLowerCase(); if(!q){renderUnit(currentUnit);return}
   const root=$('#content');root.innerHTML='';let count=0;
-  UNITS.forEach(u=>u.sections.forEach(s=>{const pointText=(pointSegments(s)||[]).map(x=>x.text).join(' ');if((s.title+' '+(s.text||'')+' '+pointText).toLowerCase().includes(q)){const c=sectionCard(s);const label=document.createElement('div');label.className='search-unit';label.textContent=u.title;c.querySelector('.section-body').prepend(label);root.appendChild(c);count++;}}));
+  UNITS.forEach(u=>u.sections.forEach(s=>{const row=pointRow(s);const pointText=(pointSegments(s)||[]).map(x=>x.text).join(' ')+' '+(row?.displayOnly||[]).join(' ');if((s.title+' '+(s.text||'')+' '+pointText).toLowerCase().includes(q)){const c=sectionCard(s);const label=document.createElement('div');label.className='search-unit';label.textContent=u.title;c.querySelector('.section-body').prepend(label);root.appendChild(c);count++;}}));
   $('#title').textContent='搜索结果';$('#range').textContent=`关键词：${q} · ${count} 个栏目`;
 });
 init();
