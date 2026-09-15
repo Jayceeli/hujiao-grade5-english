@@ -163,7 +163,7 @@ function renderUnit(i){
 function sectionCard(s){
   const wrap=document.createElement('article');wrap.className='section';
   const row=pointRow(s); const segs=pointSegments(s); const isV3=!!row?.segments; const sectionPoints=[];
-  const displayOnly=row?.displayOnly||[];
+  const displayOnly=row?.displayOnly||[]; const interstitial=row?.interstitial||[];
   const h=document.createElement('div');h.className='section-head';h.innerHTML=`<div><h2>${htmlEsc(s.title)}</h2><div class="sub">教材页 ${s.pages.join(', ')}</div></div>`;
   const acts=document.createElement('div');acts.className='section-actions';
   if(s.track){
@@ -189,6 +189,10 @@ function sectionCard(s){
       const play=()=>{resetSequence();setActivePoint(globalIndex);cuePoint(item,false)};
       if(ORIGINAL){d.onclick=play;d.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();play();}}}else d.style.cursor='default';
       body.appendChild(d);
+      interstitial.filter(x=>+x.afterSegment===idx+1).forEach(block=>{
+        if(block.note){const n=document.createElement('p');n.className='note';n.textContent=block.note;body.appendChild(n);}
+        (block.texts||[]).forEach(t=>body.appendChild(staticLine(t,true)));
+      });
     });
     if(displayOnly.length){
       const n=document.createElement('p');n.className='note';n.textContent=row?.displayOnlyNote||'以下教材文字暂未绑定原版逐句音频。';body.appendChild(n);
@@ -204,7 +208,7 @@ $('#search').addEventListener('input',e=>{
   stopAll();pointItems=[];activePointIndex=-1;resetSequence();updatePointNav();
   const q=e.target.value.trim().toLowerCase(); if(!q){renderUnit(currentUnit);return}
   const root=$('#content');root.innerHTML='';let count=0;
-  UNITS.forEach(u=>u.sections.forEach(s=>{const row=pointRow(s);const pointText=(pointSegments(s)||[]).map(x=>x.text).join(' ')+' '+(row?.displayOnly||[]).join(' ');if((s.title+' '+(s.text||'')+' '+pointText).toLowerCase().includes(q)){const c=sectionCard(s);const label=document.createElement('div');label.className='search-unit';label.textContent=u.title;c.querySelector('.section-body').prepend(label);root.appendChild(c);count++;}}));
+  UNITS.forEach(u=>u.sections.forEach(s=>{const row=pointRow(s);const interText=(row?.interstitial||[]).flatMap(x=>x.texts||[]).join(' ');const pointText=(pointSegments(s)||[]).map(x=>x.text).join(' ')+' '+(row?.displayOnly||[]).join(' ')+' '+interText;if((s.title+' '+(s.text||'')+' '+pointText).toLowerCase().includes(q)){const c=sectionCard(s);const label=document.createElement('div');label.className='search-unit';label.textContent=u.title;c.querySelector('.section-body').prepend(label);root.appendChild(c);count++;}}));
   $('#title').textContent='搜索结果';$('#range').textContent=`关键词：${q} · ${count} 个栏目`;
 });
 init();
