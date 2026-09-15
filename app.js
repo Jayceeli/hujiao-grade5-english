@@ -1,6 +1,7 @@
 let CATALOG=null,UNITS=[],MANIFEST=null,POINTMAP=null,currentUnit=0;
 let stopAt=null,playStart=null,activeLine=null,ORIGINAL=false,monitorId=null,boundaryGuard=0;
 let pointItems=[],activePointIndex=-1;
+let sequenceItems=[],sequencePos=-1,sequenceMode=false;
 const $=s=>document.querySelector(s); const audio=$('#audio');
 const htmlEsc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 
@@ -48,8 +49,9 @@ function renderNav(){
 
 function clearActive(){if(activeLine)activeLine.classList.remove('playing-line');activeLine=null;}
 function clearMonitor(){if(monitorId){cancelAnimationFrame(monitorId);monitorId=null;}}
+function resetSequence(){sequenceMode=false;sequenceItems=[];sequencePos=-1;}
 function stopAll(){
-  audio.pause(); stopAt=null; playStart=null; boundaryGuard=0; clearMonitor(); clearActive();
+  audio.pause(); stopAt=null; playStart=null; boundaryGuard=0; clearMonitor(); clearActive(); resetSequence();
   $('#now').textContent='点击带 ▶ 的教材句子播放原版录音';
 }
 $('#stopAll').onclick=stopAll;
@@ -62,6 +64,16 @@ function ensureMonitor(){
 function checkBoundary(){
   if(stopAt==null||audio.paused||performance.now()<boundaryGuard)return;
   if(audio.currentTime>=stopAt-0.018){
+    if(sequenceMode){
+      if(sequencePos<sequenceItems.length-1){
+        sequencePos++;
+        cuePoint(sequenceItems[sequencePos],true);
+      }else{
+        audio.pause(); stopAt=null; playStart=null; clearMonitor(); clearActive(); resetSequence();
+        $('#now').textContent='本节精校课文播放完成';
+      }
+      return;
+    }
     if($('#loop').checked&&playStart!=null){
       boundaryGuard=performance.now()+120;
       audio.currentTime=playStart;
@@ -76,8 +88,9 @@ audio.addEventListener('play',ensureMonitor);
 audio.addEventListener('pause',()=>{if(stopAt==null)clearMonitor();});
 $('#speed').onchange=e=>audio.playbackRate=parseFloat(e.target.value)||1;
 
-function loadOriginal(track,start=null,end=null,lineEl=null,label=''){
+function loadOriginal(track,start=null,end=null,lineEl=null,label='',keepSequence=false){
   if(!ORIGINAL)return;
+  if(!keepSequence)resetSequence();
   const m=MANIFEST?.tracks?.[track]; if(!m)return;
   clearActive(); activeLine=lineEl||null; if(activeLine)activeLine.classList.add('playing-line');
   const absStart=m.start+(start??0),absEnd=end==null?m.end:m.start+end;
@@ -88,6 +101,24 @@ function loadOriginal(track,start=null,end=null,lineEl=null,label=''){
   audio.play().then(ensureMonitor).catch(()=>{$('#audioStatus').textContent='请再次点击句子以播放原版音频';});
   const name=label||track.replace(/^\d+_/,'');
   $('#now').textContent=`原版点读 · ${name}`;
+}
+
+function cuePoint(p,keepPlaying=false){
+  if(!p||!ORIGINAL)return;
+  const m=MANIFEST?.tracks?.[p.track]; if(!m)return;
+  clearActive(); activeLine=p.el||null; if(activeLine)activeLine.classList.add('playing-line');
+  activePointIndex=p.globalIndex; updatePointNav();
+  playStart=m.start+p.start; stopAt=m.start+p.end; boundaryGuard=performance.now()+80;
+  audio.playbackRate=parseFloat($('#speed').value)||1;
+  try{audio.currentTime=playStart;}catch(e){}
+  $('#now').textContent=`原版点读 · ${p.text}`;
+  if(!keepPlaying||audio.paused)audio.play().then(ensureMonitor).catch(()=>{$('#audioStatus').textContent='请再次点击句子以播放原版音频';});
+}
+
+function playSequence(items){
+  if(!items?.length||!ORIGINAL)return;
+  sequenceItems=items; sequencePos=0; sequenceMode=true;
+  cuePoint(sequenceItems[0],false);
 }
 
 function splitSentences(text){
@@ -114,7 +145,7 @@ function updatePointNav(){
   prev.disabled=activePointIndex<=0; rep.disabled=activePointIndex<0; next.disabled=activePointIndex<0||activePointIndex>=pointItems.length-1;
 }
 function playPoint(index){
-  const p=pointItems[index]; if(!p)return; setActivePoint(index); loadOriginal(p.track,p.start,p.end,p.el,p.text);
+  const p=pointItems[index]; if(!p)return; resetSequence(); setActivePoint(index); cuePoint(p,false);
   p.el?.scrollIntoView?.({block:'nearest',behavior:'smooth'});
 }
 $('#prevPoint').onclick=()=>playPoint(activePointIndex-1);
@@ -122,7 +153,7 @@ $('#repeatPoint').onclick=()=>playPoint(activePointIndex);
 $('#nextPoint').onclick=()=>playPoint(activePointIndex+1);
 
 function renderUnit(i){
-  stopAll(); currentUnit=i; pointItems=[]; activePointIndex=-1; updatePointNav();
+  stopAll(); currentUnit=i; pointItems=[]; activePointIndex=-1; resetSequence(); updatePointNav();
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',+b.dataset.i===i));
   const u=UNITS[i]; $('#title').textContent=u.title; $('#range').textContent=`教材 PDF 第 ${u.pageRange[0]}–${u.pageRange[1]} 页`;
   const root=$('#content');root.innerHTML='';u.sections.forEach(s=>root.appendChild(sectionCard(s)));window.scrollTo({top:0,behavior:'smooth'});
@@ -130,24 +161,30 @@ function renderUnit(i){
 
 function sectionCard(s){
   const wrap=document.createElement('article');wrap.className='section';
+  const segs=pointSegments(s); const isV3=!!POINTMAP?.tracks?.[s.track]?.segments; const sectionPoints=[];
   const h=document.createElement('div');h.className='section-head';h.innerHTML=`<div><h2>${htmlEsc(s.title)}</h2><div class="sub">教材页 ${s.pages.join(', ')}</div></div>`;
   const acts=document.createElement('div');acts.className='section-actions';
-  if(s.track){const b=document.createElement('button');b.className='play-btn';b.textContent='🎧 播放本节原版音频';b.disabled=!ORIGINAL;b.onclick=()=>loadOriginal(s.track,null,null,b,s.title);acts.appendChild(b);}
+  if(s.track){
+    const b=document.createElement('button');b.className='play-btn';b.disabled=!ORIGINAL;
+    if(segs?.length){b.textContent='▶ 连续播放精校课文';b.onclick=()=>playSequence(sectionPoints);}
+    else{b.textContent='🎧 播放本节原版音频';b.onclick=()=>loadOriginal(s.track,null,null,b,s.title);}
+    acts.appendChild(b);
+  }
   h.appendChild(acts);wrap.appendChild(h);
   const body=document.createElement('div');body.className='section-body';
   if(s.note){const n=document.createElement('p');n.className='note';n.textContent=s.note;body.appendChild(n);}
 
-  const segs=pointSegments(s); const isV3=!!POINTMAP?.tracks?.[s.track]?.segments;
   if(segs?.length){
     const badge=document.createElement('p');badge.className='note';
-    badge.textContent=isV3?'v3 精校点读：按教材自然语义块切分，点击只播放该段出版社原版录音。':'人工精校点读：点击只播放该句出版社原版录音。';
+    badge.textContent=isV3?'v3 精校点读：按教材自然语义块切分，点击只播放该段出版社原版录音；顶部按钮可连续播放精校正文。':'人工精校点读：点击只播放该句出版社原版录音；顶部按钮可连续播放精校正文。';
     body.appendChild(badge);
     segs.forEach((g,idx)=>{
       const d=document.createElement('div');d.className='sentence precise';d.tabIndex=0;d.setAttribute('role','button');
       d.innerHTML=`<span class="speak">▶</span><span><b>${idx+1}.</b> ${htmlEsc(g.text)}</span>`;
       d.title='点击播放出版社原版点读音频';
-      const globalIndex=pointItems.length; pointItems.push({track:s.track,start:g.start,end:g.end,text:g.text,el:d});
-      const play=()=>{setActivePoint(globalIndex);loadOriginal(s.track,g.start,g.end,d,g.text)};
+      const globalIndex=pointItems.length; const item={track:s.track,start:g.start,end:g.end,text:g.text,el:d,globalIndex};
+      pointItems.push(item); sectionPoints.push(item);
+      const play=()=>{resetSequence();setActivePoint(globalIndex);cuePoint(item,false)};
       if(ORIGINAL){d.onclick=play;d.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();play();}}}else d.style.cursor='default';
       body.appendChild(d);
     });
@@ -158,7 +195,7 @@ function sectionCard(s){
 function staticLine(text){const d=document.createElement('div');d.className='sentence static-line';d.innerHTML=`<span class="speak"></span><span>${htmlEsc(text)}</span>`;return d;}
 
 $('#search').addEventListener('input',e=>{
-  stopAll();pointItems=[];activePointIndex=-1;updatePointNav();
+  stopAll();pointItems=[];activePointIndex=-1;resetSequence();updatePointNav();
   const q=e.target.value.trim().toLowerCase(); if(!q){renderUnit(currentUnit);return}
   const root=$('#content');root.innerHTML='';let count=0;
   UNITS.forEach(u=>u.sections.forEach(s=>{const pointText=(pointSegments(s)||[]).map(x=>x.text).join(' ');if((s.title+' '+(s.text||'')+' '+pointText).toLowerCase().includes(q)){const c=sectionCard(s);const label=document.createElement('div');label.className='search-unit';label.textContent=u.title;c.querySelector('.section-body').prepend(label);root.appendChild(c);count++;}}));
