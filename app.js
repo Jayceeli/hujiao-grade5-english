@@ -29,6 +29,13 @@ async function probeOriginalAudio(){
     const r=await fetch('assets/audio-sprite.ogg',{method:'HEAD',cache:'no-store'});
     if(!r.ok)throw new Error('publisher audio missing');
     ORIGINAL=true; audio.src='assets/audio-sprite.ogg'; audio.preload='auto'; audio.hidden=true; audio.load();
+    await new Promise(resolve=>{
+      if(audio.readyState>=1){resolve();return;}
+      let settled=false;
+      const done=()=>{if(settled)return;settled=true;audio.removeEventListener('loadedmetadata',done);resolve();};
+      audio.addEventListener('loadedmetadata',done,{once:true});
+      setTimeout(done,3000);
+    });
   }catch(e){
     ORIGINAL=false; audio.hidden=true; $('#audioStatus').textContent='出版社原版音频未加载';
   }
