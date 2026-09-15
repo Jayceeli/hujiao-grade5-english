@@ -11,7 +11,7 @@
 <div class="app">
   <aside class="side">
     <div class="brand">五年级上册英语点读<small>沪教版 · 五四制 · 2026新版</small></div>
-    <div class="mode-note"><b>仅使用出版社配套原版录音</b><br>Unit 1–10 的 Talking time 与 Story/Reading time 已加入逐句原版点读；其他有配套音轨的栏目可播放整段原版音频。没有出版社独立音轨的 Project 仅显示教材文字，不使用系统 TTS 或合成语音。</div>
+    <div class="mode-note"><b>仅使用出版社配套原版录音</b><br>Starter、Unit 1–10 主课文使用 v3 精校时间轴逐句/逐语义块点读；没有出版社独立音轨的内容只显示教材文字，不使用系统 TTS 或合成语音。</div>
     <input id="search" class="search" placeholder="搜索课文、单词、句型…">
     <nav id="nav" class="nav"></nav>
   </aside>
@@ -22,15 +22,18 @@
     </header>
     <div class="player">
       <div class="player-title"><span>🎧 出版社原版音频播放器</span><span id="audioStatus" class="status">正在初始化…</span></div>
-      <audio id="audio" controls preload="metadata" hidden></audio>
+      <audio id="audio" preload="auto" hidden></audio>
       <div class="controls">
         <span id="now">点击带 ▶ 的句子播放原版录音</span>
+        <button id="prevPoint" class="ghost-btn" disabled>← 上一句</button>
+        <button id="repeatPoint" class="ghost-btn" disabled>↻ 重播</button>
+        <button id="nextPoint" class="ghost-btn" disabled>下一句 →</button>
         <label>播放速度 <select id="speed"><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option></select></label>
         <label class="pill"><input id="loop" type="checkbox"> 逐句循环</label>
       </div>
     </div>
     <div id="content"></div>
-    <footer class="footer">教材文字来自用户提供的《义务教育教科书（五·四学制）·英语 五年级上册》，音频来自用户提供的出版社教材配套 MP3。本页面不调用浏览器 TTS，不生成或替代出版社录音。</footer>
+    <footer class="footer">教材文字来自用户提供的《义务教育教科书（五·四学制）·英语 五年级上册》，音频来自用户提供的出版社教材配套 MP3。当前主课文采用 v3 显式时间轴；页面不调用浏览器 TTS，不生成或替代出版社录音。</footer>
   </main>
 </div>
 <script src="app.js"></script>

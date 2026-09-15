@@ -1,27 +1,36 @@
-let CATALOG=null,UNITS=[],MANIFEST=null,POINTMAP=null,currentUnit=0,stopAt=null,playStart=null,activeLine=null,ORIGINAL=false;
+let CATALOG=null,UNITS=[],MANIFEST=null,POINTMAP=null,currentUnit=0;
+let stopAt=null,playStart=null,activeLine=null,ORIGINAL=false,monitorId=null,boundaryGuard=0;
+let pointItems=[],activePointIndex=-1;
 const $=s=>document.querySelector(s); const audio=$('#audio');
 const htmlEsc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 
 async function init(){
-  [CATALOG,MANIFEST,POINTMAP]=await Promise.all([
-    fetch('data/index.json').then(r=>r.json()),
-    fetch('data/audio-sprite-manifest.json').then(r=>r.json()),
-    fetch('data/main-point-timings-v2.json').then(r=>r.json())
-  ]);
-  UNITS=await Promise.all(CATALOG.units.map(x=>fetch('data/'+x.file).then(r=>r.json())));
-  await probeOriginalAudio();
-  renderNav(); renderUnit(0);
+  try{
+    const [catalog,manifest,pointIndex]=await Promise.all([
+      fetch('data/index.json',{cache:'no-store'}).then(r=>r.json()),
+      fetch('data/audio-sprite-manifest.json',{cache:'no-store'}).then(r=>r.json()),
+      fetch('data/point-v3/index.json',{cache:'no-store'}).then(r=>r.json())
+    ]);
+    CATALOG=catalog; MANIFEST=manifest;
+    const pointFiles=await Promise.all(pointIndex.files.map(f=>fetch('data/'+f,{cache:'no-store'}).then(r=>r.json())));
+    POINTMAP={version:3,tracks:Object.assign({},...pointFiles.map(x=>x.tracks||{}))};
+    UNITS=await Promise.all(CATALOG.units.map(x=>fetch('data/'+x.file,{cache:'no-store'}).then(r=>r.json())));
+    await probeOriginalAudio();
+    renderNav(); renderUnit(0);
+    const n=Object.values(POINTMAP?.tracks||{}).reduce((sum,t)=>sum+(t.segments?.length||0),0)+22;
+    if(ORIGINAL)$('#audioStatus').textContent=`出版社原版音频已就绪 · v3 精校 · ${n} 个点读段`;
+  }catch(e){
+    console.error(e); $('#audioStatus').textContent='教材数据加载失败，请刷新页面';
+  }
 }
 
 async function probeOriginalAudio(){
   try{
     const r=await fetch('assets/audio-sprite.ogg',{method:'HEAD',cache:'no-store'});
-    if(!r.ok) throw new Error('publisher audio missing');
-    ORIGINAL=true; audio.src='assets/audio-sprite.ogg'; audio.hidden=false;
-    $('#audioStatus').textContent='出版社原版音频已就绪 · 仅原版录音';
+    if(!r.ok)throw new Error('publisher audio missing');
+    ORIGINAL=true; audio.src='assets/audio-sprite.ogg'; audio.preload='auto'; audio.hidden=true; audio.load();
   }catch(e){
-    ORIGINAL=false; audio.hidden=true;
-    $('#audioStatus').textContent='出版社原版音频未加载';
+    ORIGINAL=false; audio.hidden=true; $('#audioStatus').textContent='出版社原版音频未加载';
   }
 }
 
@@ -29,26 +38,50 @@ function renderNav(){
   const nav=$('#nav'); nav.innerHTML='';
   UNITS.forEach((u,i)=>{const b=document.createElement('button');b.textContent=u.title;b.dataset.i=i;b.onclick=()=>renderUnit(i);nav.appendChild(b)});
 }
-function stopAll(){audio.pause();stopAt=null;playStart=null;if(activeLine)activeLine.classList.remove('playing-line');activeLine=null;$('#now').textContent='点击带 ▶ 的教材句子播放原版录音';}
+
+function clearActive(){if(activeLine)activeLine.classList.remove('playing-line');activeLine=null;}
+function clearMonitor(){if(monitorId){cancelAnimationFrame(monitorId);monitorId=null;}}
+function stopAll(){
+  audio.pause(); stopAt=null; playStart=null; boundaryGuard=0; clearMonitor(); clearActive();
+  $('#now').textContent='点击带 ▶ 的教材句子播放原版录音';
+}
 $('#stopAll').onclick=stopAll;
 
-function loadOriginal(track,start=null,end=null,lineEl=null){
-  if(!ORIGINAL)return;
-  const m=MANIFEST.tracks[track]; if(!m)return;
-  if(activeLine)activeLine.classList.remove('playing-line');
-  activeLine=lineEl||null; if(activeLine)activeLine.classList.add('playing-line');
-  const absStart=m.start+(start??0), absEnd=end==null?m.end:m.start+end;
-  playStart=absStart; stopAt=absEnd; audio.currentTime=absStart; audio.playbackRate=parseFloat($('#speed').value)||1;
-  audio.play().catch(()=>{$('#audioStatus').textContent='当前浏览器无法播放该原版音频格式';});
-  $('#now').textContent=`原版音频 · ${track.replace(/^\d+_/,'')}${start!=null?' · 精切点读':''}`;
+function ensureMonitor(){
+  if(monitorId)return;
+  const tick=()=>{monitorId=requestAnimationFrame(tick);checkBoundary();};
+  monitorId=requestAnimationFrame(tick);
 }
-audio.addEventListener('timeupdate',()=>{
-  if(stopAt!=null&&audio.currentTime>=stopAt){
-    if($('#loop').checked&&playStart!=null){audio.currentTime=playStart;audio.play();}
-    else{audio.pause();stopAt=null;playStart=null;if(activeLine)activeLine.classList.remove('playing-line');activeLine=null;}
+function checkBoundary(){
+  if(stopAt==null||audio.paused||performance.now()<boundaryGuard)return;
+  if(audio.currentTime>=stopAt-0.018){
+    if($('#loop').checked&&playStart!=null){
+      boundaryGuard=performance.now()+120;
+      audio.currentTime=playStart;
+      audio.play().catch(()=>{});
+    }else{
+      audio.pause(); stopAt=null; playStart=null; clearMonitor(); clearActive();
+    }
   }
-});
-$('#speed').onchange=e=>audio.playbackRate=parseFloat(e.target.value);
+}
+audio.addEventListener('timeupdate',checkBoundary);
+audio.addEventListener('play',ensureMonitor);
+audio.addEventListener('pause',()=>{if(stopAt==null)clearMonitor();});
+$('#speed').onchange=e=>audio.playbackRate=parseFloat(e.target.value)||1;
+
+function loadOriginal(track,start=null,end=null,lineEl=null,label=''){
+  if(!ORIGINAL)return;
+  const m=MANIFEST?.tracks?.[track]; if(!m)return;
+  clearActive(); activeLine=lineEl||null; if(activeLine)activeLine.classList.add('playing-line');
+  const absStart=m.start+(start??0),absEnd=end==null?m.end:m.start+end;
+  playStart=absStart; stopAt=absEnd; boundaryGuard=performance.now()+80;
+  audio.pause();
+  try{audio.currentTime=absStart;}catch(e){}
+  audio.playbackRate=parseFloat($('#speed').value)||1;
+  audio.play().then(ensureMonitor).catch(()=>{$('#audioStatus').textContent='请再次点击句子以播放原版音频';});
+  const name=label||track.replace(/^\d+_/,'');
+  $('#now').textContent=`原版点读 · ${name}`;
+}
 
 function splitSentences(text){
   if(!text)return[]; const out=[];
@@ -61,21 +94,28 @@ function splitSentences(text){
 }
 
 function pointSegments(s){
-  if(s.segments?.length)return s.segments; // Starter 已人工精校
-  const rows=POINTMAP?.tracks?.[s.track];
-  if(!rows?.length)return null;
-  const pieces=splitSentences(s.text).filter(x=>/[.!?。！？]/.test(x));
-  let pos=0; const points=[];
-  for(const [start,end,count] of rows){
-    const chunk=pieces.slice(pos,pos+count); pos+=count;
-    if(!chunk.length)break;
-    points.push({text:chunk.join(' '),start,end});
-  }
-  return points;
+  if(s.segments?.length)return s.segments;
+  const row=POINTMAP?.tracks?.[s.track];
+  if(row?.segments?.length)return row.segments;
+  return null;
 }
 
+function setActivePoint(index){activePointIndex=index;updatePointNav();}
+function updatePointNav(){
+  const prev=$('#prevPoint'),rep=$('#repeatPoint'),next=$('#nextPoint');
+  if(!prev||!rep||!next)return;
+  prev.disabled=activePointIndex<=0; rep.disabled=activePointIndex<0; next.disabled=activePointIndex<0||activePointIndex>=pointItems.length-1;
+}
+function playPoint(index){
+  const p=pointItems[index]; if(!p)return; setActivePoint(index); loadOriginal(p.track,p.start,p.end,p.el,p.text);
+  p.el?.scrollIntoView?.({block:'nearest',behavior:'smooth'});
+}
+$('#prevPoint').onclick=()=>playPoint(activePointIndex-1);
+$('#repeatPoint').onclick=()=>playPoint(activePointIndex);
+$('#nextPoint').onclick=()=>playPoint(activePointIndex+1);
+
 function renderUnit(i){
-  currentUnit=i;
+  stopAll(); currentUnit=i; pointItems=[]; activePointIndex=-1; updatePointNav();
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',+b.dataset.i===i));
   const u=UNITS[i]; $('#title').textContent=u.title; $('#range').textContent=`教材 PDF 第 ${u.pageRange[0]}–${u.pageRange[1]} 页`;
   const root=$('#content');root.innerHTML='';u.sections.forEach(s=>root.appendChild(sectionCard(s)));window.scrollTo({top:0,behavior:'smooth'});
@@ -85,29 +125,36 @@ function sectionCard(s){
   const wrap=document.createElement('article');wrap.className='section';
   const h=document.createElement('div');h.className='section-head';h.innerHTML=`<div><h2>${htmlEsc(s.title)}</h2><div class="sub">教材页 ${s.pages.join(', ')}</div></div>`;
   const acts=document.createElement('div');acts.className='section-actions';
-  if(s.track){const b=document.createElement('button');b.className='play-btn';b.textContent='🎧 播放本节原版音频';b.disabled=!ORIGINAL;b.onclick=()=>loadOriginal(s.track);acts.appendChild(b);}
+  if(s.track){const b=document.createElement('button');b.className='play-btn';b.textContent='🎧 播放本节原版音频';b.disabled=!ORIGINAL;b.onclick=()=>loadOriginal(s.track,null,null,b,s.title);acts.appendChild(b);}
   h.appendChild(acts);wrap.appendChild(h);
   const body=document.createElement('div');body.className='section-body';
   if(s.note){const n=document.createElement('p');n.className='note';n.textContent=s.note;body.appendChild(n);}
 
-  const segs=pointSegments(s); const isRefined=!!POINTMAP?.tracks?.[s.track];
+  const segs=pointSegments(s); const isV3=!!POINTMAP?.tracks?.[s.track]?.segments;
   if(segs?.length){
-    if(isRefined){const badge=document.createElement('p');badge.className='note';badge.textContent='主课文精切：按教材自然语义块播放，仅使用出版社原版录音。';body.appendChild(badge);}
-    segs.forEach(g=>{const d=document.createElement('div');d.className='sentence precise';d.innerHTML=`<span class="speak">▶</span><span>${htmlEsc(g.text)}</span>`;d.title='点击播放出版社原版精切音频';if(ORIGINAL)d.onclick=()=>loadOriginal(s.track,g.start,g.end,d);else d.style.cursor='default';body.appendChild(d);});
-    // 主课文不再混入练习题文字；Starter 等人工段落仍可展开其余教材文字。
-    if(!isRefined){
-      const all=splitSentences(s.text); if(all.length>segs.length){const detail=document.createElement('details');detail.innerHTML='<summary class="note">展开本节其他教材文字（无非原版朗读）</summary>';const box=document.createElement('div');all.slice(segs.length).forEach(p=>box.appendChild(staticLine(p)));detail.appendChild(box);body.appendChild(detail);}
-    }
+    const badge=document.createElement('p');badge.className='note';
+    badge.textContent=isV3?'v3 精校点读：按教材自然语义块切分，点击只播放该段出版社原版录音。':'人工精校点读：点击只播放该句出版社原版录音。';
+    body.appendChild(badge);
+    segs.forEach((g,idx)=>{
+      const d=document.createElement('div');d.className='sentence precise';d.tabIndex=0;d.setAttribute('role','button');
+      d.innerHTML=`<span class="speak">▶</span><span><b>${idx+1}.</b> ${htmlEsc(g.text)}</span>`;
+      d.title='点击播放出版社原版点读音频';
+      const globalIndex=pointItems.length; pointItems.push({track:s.track,start:g.start,end:g.end,text:g.text,el:d});
+      const play=()=>{setActivePoint(globalIndex);loadOriginal(s.track,g.start,g.end,d,g.text)};
+      if(ORIGINAL){d.onclick=play;d.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();play();}}}else d.style.cursor='default';
+      body.appendChild(d);
+    });
   }else if(s.text){splitSentences(s.text).forEach(p=>body.appendChild(staticLine(p)));}
   else body.innerHTML='<div class="empty">暂无可提取文字</div>';
   wrap.appendChild(body);return wrap;
 }
-function staticLine(text){const d=document.createElement('div');d.className='sentence';d.style.cursor='default';d.innerHTML=`<span class="speak"></span><span>${htmlEsc(text)}</span>`;return d;}
+function staticLine(text){const d=document.createElement('div');d.className='sentence static-line';d.innerHTML=`<span class="speak"></span><span>${htmlEsc(text)}</span>`;return d;}
 
 $('#search').addEventListener('input',e=>{
+  stopAll();pointItems=[];activePointIndex=-1;updatePointNav();
   const q=e.target.value.trim().toLowerCase(); if(!q){renderUnit(currentUnit);return}
-  const root=$('#content');root.innerHTML='';
-  UNITS.forEach(u=>u.sections.forEach(s=>{if((s.title+' '+(s.text||'')).toLowerCase().includes(q)){const c=sectionCard(s);const label=document.createElement('div');label.className='search-unit';label.textContent=u.title;c.querySelector('.section-body').prepend(label);root.appendChild(c);}}));
-  $('#title').textContent='搜索结果';$('#range').textContent=`关键词：${q}`;
+  const root=$('#content');root.innerHTML='';let count=0;
+  UNITS.forEach(u=>u.sections.forEach(s=>{const pointText=(pointSegments(s)||[]).map(x=>x.text).join(' ');if((s.title+' '+(s.text||'')+' '+pointText).toLowerCase().includes(q)){const c=sectionCard(s);const label=document.createElement('div');label.className='search-unit';label.textContent=u.title;c.querySelector('.section-body').prepend(label);root.appendChild(c);count++;}}));
+  $('#title').textContent='搜索结果';$('#range').textContent=`关键词：${q} · ${count} 个栏目`;
 });
 init();
