@@ -1,0 +1,11 @@
+{
+  "name":"沪教版五年级上册英语",
+  "short_name":"五上英语",
+  "description":"2026 上海五四制五年级上册英语：精校原版点读、笔记、单词听写与离线学习",
+  "start_url":"./",
+  "scope":"./",
+  "display":"standalone",
+  "background_color":"#f5f7f6",
+  "theme_color":"#f5f7f6",
+  "lang":"zh-CN"
+}
